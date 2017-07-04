@@ -59,6 +59,13 @@ constructor(tokens: string[])
 }
 }
  */
+function parseInt16(token) {
+    var num = parseInt(token);
+    if (num < 0) {
+        num = num & 0xffff;
+    }
+    return num;
+}
 function OSECPU_FPGA_compile(str) {
     var lines = str.split("\n");
     var binStr = "";
@@ -80,7 +87,7 @@ function OSECPU_FPGA_compile(str) {
             else if (tokens[0] === "LIMM16") {
                 opCode = 0x02;
                 op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-                op |= shiftedOperand(parseInt(tokens[2]), 3);
+                op |= shiftedOperand(parseInt16(tokens[2]), 3);
             }
             else if (tokens[0] === "OR") {
                 opCode = 0x10;
@@ -108,6 +115,18 @@ function OSECPU_FPGA_compile(str) {
             }
             else if (tokens[0] === "SUB") {
                 opCode = 0x15;
+                op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
+                op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
+                op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
+            }
+            else if (tokens[0] === "SHL") {
+                opCode = 0x18;
+                op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
+                op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
+                op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
+            }
+            else if (tokens[0] === "SAR") {
+                opCode = 0x19;
                 op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
                 op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
                 op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
@@ -149,7 +168,7 @@ fs.readFile(process.argv[2], 'utf8', function (err, text) {
         retv = OSECPU_FPGA_compile(text);
     }
     catch (e) {
-        console.log(e);
+        console.error(e);
     }
     console.error('Compilation end:');
     console.log(retv);
