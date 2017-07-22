@@ -1,8 +1,120 @@
 
+var operand = function(type, byteIndex, bitOfs, binList, token){
+	var v;
+	switch(type){
+		case "R":
+			v = getRegNum(token, "R");
+			break;
+		case "T":
+			v = getTypeNum(token);
+			break;
+		case "i16":
+			v = parseInt16(token);
+			break;
+		default:
+			throw "Unknown operand type: " + type
+	}
+	if(binList[byteIndex] === undefined) binList[byteIndex] = 0;
+	binList[byteIndex] |= v << bitOfs;
+	return binList;
+}
+var op = function(type, byteIndex, bitOfs){
+	return function(binList, token){
+		return operand(type, byteIndex, bitOfs, binList, token);
+	}
+}
+
+var OSECPU_FPGA_INSTR_SET = {
+	"NOP":	[
+		0x00,
+	],
+	"LBSET":[
+		0x01, 
+		op("T", 0, 18), op("i16", 0, 0), op("i16", 1, 16), op("i16", 1, 0),
+	],
+	"LIMM16":[
+		0x02, 
+		op("R", 0, 18), op("i16", 0, 0),
+	],
+	"SAR":[
+		0x19, 
+		op("R", 0, 18), op("R", 0, 12), op("R", 0, 6),
+	],
+	"CP":[
+		0xD2, 
+		op("R", 0, 18), op("R", 0, 12),
+	],
+	"CPDR":[
+		0xD3, 
+		op("R", 0, 12),
+	],
+	"END":	[
+		0xF0,
+	],
+}
+
+class Assembler
+{
+	private tokenSeparatorList = [];
+	private opTable: any;
+	constructor(tokenSeparatorList: string[], opTable: any){
+		this.tokenSeparatorList = tokenSeparatorList;
+		this.opTable = opTable;
+	}
+	tokenize(input: string): string[]
+	{
+		var tokens = 
+			input.splitByArraySeparatorSeparatedLong(this.tokenSeparatorList)
+		tokens.removeAllObject(" ");
+		tokens.removeAllObject("\t");
+		tokens.removeAllObject("\n");
+		return tokens;
+	}
+	toHexStr32(v: number): string
+	{
+		return ("00000000" + (v >>> 0).toString(16)).substr(-8);
+	}
+	compile(input: string)
+	{
+		var s = "";
+		try{
+			var tokenList = this.tokenize(input);
+			for(var i = 0; i < tokenList.length; ){
+				var mn = tokenList[i];
+				if(this.opTable[mn] === undefined){
+					throw "Unknown mnemonic: " + mn;
+				}
+				var opeRule = this.opTable[mn];
+				var bin = [0];
+				for(var k = 1; k < opeRule.length; k++){
+					var token = tokenList[i + k];
+					bin = opeRule[k](bin, tokenList[i + k]);
+				}
+				bin[0] |= opeRule[0] << 24;
+				s += this.toHexStr32(bin[0]) + "\n";
+				if(bin[1] !== undefined) s += this.toHexStr32(bin[1]) + "\n";
+				i += opeRule.length;
+			}
+			console.log(s);
+		} catch(e){
+			console.error(e);
+			process.exit(1);
+		}
+	}
+}
+
 function getRegNum(token, type)
 {
 	if(token[0] != type) throw "Expected register type is " + type + ", but " + token[0];
 	return parseInt(token.substr(1));
+}
+function getTypeNum(token)
+{
+	token = token.toUpperCase();
+	switch(token){
+		case "CODE": return 0x86;
+	}
+	throw "Unexpected label type: " + token;
 }
 function shiftedOperand(v, index){
 	// index: 0, 1, 2, 3
@@ -11,55 +123,6 @@ function shiftedOperand(v, index){
 function shiftedOpecode(op){
 	return op << 24;
 }
-	/*
-class OSECPU_Instr{
-	constructor(tokens: string[])
-	{
-		var op = 0;
-		if(tokens[0] === "NOP"){
-			op |= shiftedOpecode(0x00);
-		} else if(tokens[0] === "LIMM16"){
-			op |= shiftedOpecode(0x02);
-			op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-			op |= shiftedOperand(parseInt(tokens[2]), 3);
-		} else if(tokens[0] === "OR"){
-			op |= shiftedOpecode(0x10);
-			op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-			op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-			op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
-		} else if(tokens[0] === "XOR"){
-			op |= shiftedOpecode(0x11);
-			op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-			op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-			op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
-		} else if(tokens[0] === "AND"){
-			op |= shiftedOpecode(0x12);
-			op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-			op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-			op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
-		} else if(tokens[0] === "ADD"){
-			op |= shiftedOpecode(0x14);
-			op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-			op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-			op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
-		} else if(tokens[0] === "SUB"){
-			op |= shiftedOpecode(0x15);
-			op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-			op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-			op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
-		} else if(tokens[0] === "CP"){
-			op |= shiftedOpecode(0xD2);
-			op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-			op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-		} else if(tokens[0] === "END"){
-			op |= shiftedOpecode(0xF0);
-		} else{
-			throw "Unknown Mnemonic " + tokens[0];
-		}
-		binStr += ("00000000" + op.toString(16)).substr(-8) + "\n";
-	}
-}
-	 */
 function parseInt16(token: string)
 {
 	var num = parseInt(token);
@@ -67,79 +130,6 @@ function parseInt16(token: string)
 		num = num & 0xffff;
 	} 
 	return num;
-}
-function OSECPU_FPGA_compile(str){
-	 var lines = str.split("\n");
-	var binStr = "";
-	for(var i = 0; i < lines.length; i++){
-		var tokens = lines[i].trim().split(" ");
-		for(var k = 0; k < tokens.length; k++){
-			if(tokens[k] === ""){
-				tokens.splice(k);
-				k--;
-			}
-		}
-		if(tokens.length > 0){
-			var op = 0;
-			var opCode = 0;
-			if(tokens[0] === "NOP"){
-				opCode = 0;;
-			} else if(tokens[0] === "LIMM16"){
-				opCode = 0x02;
-				op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-				op |= shiftedOperand(parseInt16(tokens[2]), 3);
-			} else if(tokens[0] === "OR"){
-				opCode = 0x10;
-				op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-				op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-				op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
-			} else if(tokens[0] === "XOR"){
-				opCode = 0x11;
-				op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-				op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-				op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
-			} else if(tokens[0] === "AND"){
-				opCode = 0x12;
-				op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-				op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-				op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
-			} else if(tokens[0] === "ADD"){
-				opCode = 0x14;
-				op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-				op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-				op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
-			} else if(tokens[0] === "SUB"){
-				opCode = 0x15;
-				op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-				op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-				op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
-			} else if(tokens[0] === "SHL"){
-				opCode = 0x18;
-				op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-				op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-				op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
-			} else if(tokens[0] === "SAR"){
-				opCode = 0x19;
-				op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-				op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-				op |= shiftedOperand(getRegNum(tokens[3], "R"), 2);
-			} else if(tokens[0] === "CP"){
-				opCode = 0xD2;
-				op |= shiftedOperand(getRegNum(tokens[1], "R"), 0);
-				op |= shiftedOperand(getRegNum(tokens[2], "R"), 1);
-			} else if(tokens[0] === "CPDR"){
-				opCode = 0xD3;
-				op |= shiftedOperand(getRegNum(tokens[1], "R"), 1);
-			} else if(tokens[0] === "END"){
-				opCode = 0xF0;
-			} else{
-				throw "Unknown Mnemonic " + tokens[0];
-			}
-			binStr += ("00" + opCode.toString(16)).substr(-2) + 
-				("000000" + op.toString(16)).substr(-6) + "\n";
-		}
-	}
-	return binStr;
 }
 
 if(process.argv.length < 3){
@@ -153,14 +143,9 @@ fs.readFile(process.argv[2], 'utf8', function (err, text) {
 		console.log('File open failed. ' + err);
 		process.exit(1);
 	}
-	console.error('Compilation begin:');
-	var retv = null;
-	try{
-		retv = OSECPU_FPGA_compile(text);
-	} catch(e){
-		console.error(e);
-	}
-	console.error('Compilation end:');
-	console.log(retv);
+	var compiler = new Assembler([
+		" ", "\t", "\n" 
+	], OSECPU_FPGA_INSTR_SET);
+	compiler.compile(text);
 });
 
