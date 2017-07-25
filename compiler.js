@@ -10,6 +10,12 @@ var operand = function (type, byteIndex, bitOfs, binList, token) {
         case "i16":
             v = parseInt16(token);
             break;
+        case "i32":
+            v = parseInt32(token);
+            break;
+        case "i24":
+            v = parseInt24(token);
+            break;
         default:
             throw "Unknown operand type: " + type;
     }
@@ -23,34 +29,77 @@ var op = function (type, byteIndex, bitOfs) {
         return operand(type, byteIndex, bitOfs, binList, token);
     };
 };
-var OSECPU_FPGA_INSTR_SET = {
-    "NOP": [
-        0x00,
-    ],
-    "LBSET": [
-        0x01,
-        op("T", 0, 18), op("i16", 0, 0), op("i16", 1, 16), op("i16", 1, 0),
-    ],
-    "LIMM16": [
-        0x02,
-        op("R", 0, 18), op("i16", 0, 0),
-    ],
-    "SAR": [
-        0x19,
-        op("R", 0, 18), op("R", 0, 12), op("R", 0, 6),
-    ],
-    "CP": [
-        0xD2,
-        op("R", 0, 18), op("R", 0, 12),
-    ],
-    "CPDR": [
-        0xD3,
-        op("R", 0, 12),
-    ],
-    "END": [
-        0xF0,
-    ]
+var OSECPU_FPGA_INSTR_TYPE = {
+    "OPONLY": [],
+    "LBSET": [op("T", 0, 18), op("i16", 0, 0), op("i16", 1, 16), op("i16", 1, 0)],
+    "LIMM16": [op("R", 0, 18), op("i16", 0, 0)],
+    "PLIMM": [op("P", 0, 18), op("i16", 0, 0)],
+    "CND": [op("R", 0, 18)],
+    "1R1PT": [op("R", 0, 18), op("P", 0, 12), op("T", 0, 0)],
+    "2PT": [op("P", 0, 18), op("P", 0, 12), op("T", 0, 0)],
+    "1R2PT": [op("R", 0, 18), op("P", 0, 12), op("P", 0, 6), op("T", 0, 0)],
+    "3R": [op("R", 0, 18), op("R", 0, 12), op("R", 0, 6)],
+    "PCP": [op("P", 0, 12), op("P", 0, 6)],
+    "1R2P": [op("R", 0, 18), op("P", 0, 12), op("P", 0, 6)],
+    "LIMM32": [op("R", 0, 18), op("i32", 1, 0)],
+    "CP": [op("R", 0, 18), op("R", 0, 12)],
+    "CPDR": [op("R", 0, 12)],
+    "IMM24": [op("i24", 0, 0)]
 };
+var OSECPU_FPGA_INSTR_SET = {
+    "NOP": [0x00, "OPONLY"],
+    "LBSET": [0x01, "LBSET"],
+    "LIMM16": [0x02, "LIMM16"],
+    "PLIMM": [0x03, "PLIMM"],
+    "CND": [0x04, "CND"],
+    "LMEM": [0x08, "1R1PT"],
+    "SMEM": [0x09, "1R1PT"],
+    "PLMEM": [0x0A, "2PT"],
+    "PSMEM": [0x0B, "2PT"],
+    "PADD": [0x0E, "1R2PT"],
+    "PDIF": [0x0F, "1R2PT"],
+    "OR": [0x10, "3R"],
+    "XOR": [0x11, "3R"],
+    "AND": [0x12, "3R"],
+    "ADD": [0x14, "3R"],
+    "SUB": [0x15, "3R"],
+    "MUL": [0x16, "3R"],
+    "SHL": [0x18, "3R"],
+    "SAR": [0x19, "3R"],
+    "DIV": [0x1A, "3R"],
+    "MOD": [0x1B, "3R"],
+    "PCP": [0x1E, "PCP"],
+    "CMPE": [0x20, "3R"],
+    "CMPNE": [0x21, "3R"],
+    "CMPL": [0x22, "3R"],
+    "CMPGE": [0x23, "3R"],
+    "CMPLE": [0x24, "3R"],
+    "CMPG": [0x25, "3R"],
+    "TSTZ": [0x26, "3R"],
+    "TSTNZ": [0x27, "3R"],
+    "PCMPE": [0x28, "1R2P"],
+    "PCMPNE": [0x29, "1R2P"],
+    "PCMPL": [0x2A, "1R2P"],
+    "PCMPGE": [0x2B, "1R2P"],
+    "PCMPLE": [0x2C, "1R2P"],
+    "PCMPG": [0x2D, "1R2P"],
+    "LIMM32": [0xD0, "LIMM32"],
+    "LMEMCONV": [0xD1, "1R1PT"],
+    "CP": [0xD2, "CP"],
+    "CPDR": [0xD3, "CPDR"],
+    "END": [0xF0, "OPONLY"]
+};
+var OSECPU_FPGA_INSTR_MAP = {};
+for (var k in OSECPU_FPGA_INSTR_SET) {
+    var instrDef = OSECPU_FPGA_INSTR_SET[k];
+    var instrOperands = OSECPU_FPGA_INSTR_TYPE[instrDef[1]];
+    if (instrOperands === undefined) {
+        console.error("not found in INSTR_TYPE " + instrDef[1]);
+        process.exit(1);
+    }
+    OSECPU_FPGA_INSTR_MAP[k] =
+        [instrDef[0]].concat(instrOperands);
+}
 var Assembler = (function () {
     function Assembler(tokenSeparatorList, opTable) {
         this.tokenSeparatorList = [];
@@ -123,6 +172,16 @@ function parseInt16(token) {
     }
     return num;
 }
+function parseInt24(token) {
+    var num = parseInt(token);
+    if (num < 0) {
+        num = num & 0xffffff;
+    }
+    return num;
+}
+function parseInt32(token) {
+    return parseInt(token);
+}
 if (process.argv.length < 3) {
     console.log("node compiler.js <source>");
     process.exit(0);
@@ -135,7 +194,7 @@ fs.readFile(process.argv[2], 'utf8', function (err, text) {
     }
     var compiler = new Assembler([
         " ", "\t", "\n"
-    ], OSECPU_FPGA_INSTR_SET);
+    ], OSECPU_FPGA_INSTR_MAP);
     compiler.compile(text);
 });
 ;
