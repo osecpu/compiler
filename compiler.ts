@@ -143,6 +143,7 @@ class Assembler
 					bin = opeRule[k](bin, tokenList[i + k]);
 				}
 				bin[0] |= opeRule[0] << 24;
+				console.error("OP: " + opeRule[0].toString(16));
 				s += this.toHexStr32(bin[0]) + "\n";
 				if(bin[1] !== undefined) s += this.toHexStr32(bin[1]) + "\n";
 				i += opeRule.length;
@@ -164,7 +165,21 @@ function getTypeNum(token)
 {
 	token = token.toUpperCase();
 	switch(token){
-		case "CODE": return 0x86;
+		case "UNDEFINED": return 0x00;
+		case "VPTR":		return 0x01;
+		case "SINT8":		return 0x02;
+		case "UINT8":		return 0x03;
+		case "SINT16":		return 0x04;
+		case "UINT16":		return 0x05;
+		case "SINT32":		return 0x06;
+		case "UINT32":		return 0x07;
+		case "SINT4":		return 0x08;
+		case "UINT4":		return 0x09;
+		case "SINT2":		return 0x0A;
+		case "UINT2":		return 0x0B;
+		case "SINT1":		return 0x0C;
+		case "UINT1":		return 0x0D;
+		case "CODE": 		return 0x7F;
 	}
 	throw "Unexpected label type: " + token;
 }

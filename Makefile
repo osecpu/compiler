@@ -7,7 +7,7 @@ compiler.js : compiler.ts Makefile
 	tsc compiler.ts ext.ts --outfile compiler.js
 
 %.hex : %.s compiler.js Makefile
-	node compiler.js $*.s > rom.hex
+	node compiler.js $*.s | tee rom.hex
 
 clean:
 	-rm *.hex
