@@ -7,6 +7,9 @@ var operand = function (type, byteIndex, bitOfs, binList, token) {
         case "P":
             v = getRegNum(token, "P");
             break;
+        case "L":
+            v = getLabelNum(token);
+            break;
         case "T":
             v = getTypeNum(token);
             break;
@@ -34,9 +37,9 @@ var op = function (type, byteIndex, bitOfs) {
 };
 var OSECPU_FPGA_INSTR_TYPE = {
     "OPONLY": [],
-    "LBSET": [op("T", 0, 18), op("i16", 0, 0), op("i16", 1, 16), op("i16", 1, 0)],
+    "LBSET": [op("T", 0, 18), op("L", 0, 0), op("i16", 1, 16), op("i16", 1, 0)],
     "LIMM16": [op("R", 0, 18), op("i16", 0, 0)],
-    "PLIMM": [op("P", 0, 18), op("i16", 0, 0)],
+    "PLIMM": [op("P", 0, 18), op("L", 0, 0)],
     "CND": [op("R", 0, 18)],
     "1R1PT": [op("R", 0, 18), op("P", 0, 12), op("T", 0, 0)],
     "2PT": [op("P", 0, 18), op("P", 0, 12), op("T", 0, 0)],
@@ -103,6 +106,67 @@ for (var k in OSECPU_FPGA_INSTR_SET) {
     OSECPU_FPGA_INSTR_MAP[k] =
         [instrDef[0]].concat(instrOperands);
 }
+var Instr = (function () {
+    function Instr(opTable, tokenList, index) {
+        var mn = tokenList[index];
+        this.opeRule = opTable[mn];
+        if (this.opeRule === undefined) {
+            throw "Unknown mnemonic: " + mn;
+        }
+        this.bin = [0];
+        for (var k = 1; k < this.opeRule.length; k++) {
+            var token = tokenList[index + k];
+            this.bin = this.opeRule[k](this.bin, tokenList[index + k]);
+        }
+        this.bin[0] |= this.opeRule[0] << 24;
+        console.error("mn: " + mn);
+    }
+    Instr.prototype.getTokenCount = function () {
+        return this.opeRule.length;
+    };
+    Instr.prototype.getBin = function () {
+        return this.bin;
+    };
+    return Instr;
+}());
+var CodeBlock = (function () {
+    function CodeBlock(LBID, type) {
+        this.codeList = [];
+        this.LBID = LBID;
+        this.type = type;
+    }
+    CodeBlock.prototype.appendCode = function (bin) {
+        this.codeList.push(bin[0]);
+        if (bin[1] !== undefined)
+            this.codeList.push(bin[1]);
+    };
+    CodeBlock.prototype.getSize = function () {
+        return this.codeList.length;
+    };
+    CodeBlock.prototype.getHexStr = function () {
+        var s = "";
+        for (var i = 0; i < this.codeList.length; i++) {
+            s += this.toHexStr32(this.codeList[i]) + "\n";
+        }
+        return s;
+    };
+    CodeBlock.prototype.getLBID = function () {
+        return this.LBID;
+    };
+    CodeBlock.prototype.genLBSETInstr = function (opTable, ofs) {
+        return new Instr(opTable, [
+            "LBSET",
+            this.type,
+            "L" + this.getLBID(),
+            ofs.toString(),
+            this.getSize().toString(),
+        ], 0);
+    };
+    CodeBlock.prototype.toHexStr32 = function (v) {
+        return ("00000000" + (v >>> 0).toString(16)).substr(-8);
+    };
+    return CodeBlock;
+}());
 var Assembler = (function () {
     function Assembler(tokenSeparatorList, opTable) {
         this.tokenSeparatorList = [];
@@ -125,31 +189,53 @@ var Assembler = (function () {
         tokens.removeAllObject("\n");
         return tokens;
     };
-    Assembler.prototype.toHexStr32 = function (v) {
-        return ("00000000" + (v >>> 0).toString(16)).substr(-8);
-    };
     Assembler.prototype.compile = function (input) {
         var s = "";
         try {
             var tokenList = this.tokenize(input);
+            var codeBlockList = [];
+            var currentBlock = undefined;
             for (var i = 0; i < tokenList.length;) {
                 var mn = tokenList[i];
-                if (this.opTable[mn] === undefined) {
-                    throw "Unknown mnemonic: " + mn;
+                if (mn.substr(0, 2) === "LB") {
+                    // new block
+                    var lbNum = parseInt(tokenList[i + 1]);
+                    getTypeNum(tokenList[i + 2]); // check
+                    if (isNaN(lbNum)) {
+                        throw "Expected lbNum, but " + tokenList[i + 1];
+                    }
+                    currentBlock = new CodeBlock(lbNum, tokenList[i + 2]);
+                    codeBlockList.push(currentBlock);
+                    i += 3;
                 }
-                var opeRule = this.opTable[mn];
-                var bin = [0];
-                for (var k = 1; k < opeRule.length; k++) {
-                    var token = tokenList[i + k];
-                    bin = opeRule[k](bin, tokenList[i + k]);
+                else {
+                    if (currentBlock === undefined) {
+                        throw "You need define label before code body";
+                    }
+                    var instr = new Instr(this.opTable, tokenList, i);
+                    var bin = instr.getBin();
+                    currentBlock.appendCode(bin);
+                    i += instr.getTokenCount();
                 }
-                bin[0] |= opeRule[0] << 24;
-                console.error("OP: " + opeRule[0].toString(16));
-                s += this.toHexStr32(bin[0]) + "\n";
-                if (bin[1] !== undefined)
-                    s += this.toHexStr32(bin[1]) + "\n";
-                i += opeRule.length;
             }
+            console.error(codeBlockList);
+            // generate LBSET instr
+            var binStr = "";
+            var header = new CodeBlock();
+            var ofs = codeBlockList.length * 2;
+            for (var i = 0; i < codeBlockList.length; i++) {
+                var block = codeBlockList[i];
+                var instr = block.genLBSETInstr(this.opTable, ofs);
+                var bin = instr.getBin();
+                header.appendCode(bin);
+                ofs += block.getSize();
+            }
+            codeBlockList.unshift(header);
+            // Generate HEX file
+            for (var i = 0; i < codeBlockList.length; i++) {
+                s += codeBlockList[i].getHexStr();
+            }
+            //
             console.log(s);
         }
         catch (e) {
@@ -159,6 +245,15 @@ var Assembler = (function () {
     };
     return Assembler;
 }());
+function getLabelNum(token) {
+    if (token[0] != "L")
+        throw "Expected label identifier, but " + token[0];
+    var lbnum = parseInt(token.substr(1));
+    if (lbnum < 0 || 0x1000 <= lbnum) {
+        throw "Out of bounds for label number (0-4095)";
+    }
+    return lbnum;
+}
 function getRegNum(token, type) {
     if (token[0] != type)
         throw "Expected register type is " + type + ", but " + token[0];
