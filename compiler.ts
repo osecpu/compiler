@@ -171,8 +171,15 @@ class CodeBlock
 			this.type,
 			"L" + this.getLBID(),
 			ofs.toString(),
-			this.getSize().toString(),
+			this.getLabelDataCount().toString(),
 		], 0);
+	}
+	private getLabelDataCount(){
+		if(this.type.toUpperCase() === "CODE"){
+			return 1;
+		} else{
+			return this.getSize();
+		}
 	}
 	private toHexStr32(v: number): string
 	{

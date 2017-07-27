@@ -159,8 +159,16 @@ var CodeBlock = (function () {
             this.type,
             "L" + this.getLBID(),
             ofs.toString(),
-            this.getSize().toString(),
+            this.getLabelDataCount().toString(),
         ], 0);
+    };
+    CodeBlock.prototype.getLabelDataCount = function () {
+        if (this.type.toUpperCase() === "CODE") {
+            return 1;
+        }
+        else {
+            return this.getSize();
+        }
     };
     CodeBlock.prototype.toHexStr32 = function (v) {
         return ("00000000" + (v >>> 0).toString(16)).substr(-8);

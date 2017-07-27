@@ -1,5 +1,4 @@
 LB 1 Code
-	NOP
 	PLIMM P0 L1
 	LIMM16 R0 2
 	PADD R0 P0 P0 Code
