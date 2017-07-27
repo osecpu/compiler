@@ -5,6 +5,9 @@ var operand = function(type, byteIndex, bitOfs, binList, token){
 		case "R":
 			v = getRegNum(token, "R");
 			break;
+		case "P":
+			v = getRegNum(token, "P");
+			break;
 		case "T":
 			v = getTypeNum(token);
 			break;
@@ -119,6 +122,13 @@ class Assembler
 			input.splitByArraySeparatorSeparatedLong(this.tokenSeparatorList)
 		tokens.removeAllObject(" ");
 		tokens.removeAllObject("\t");
+		for(;;){
+			var pL = tokens.indexOf("/*");
+			if(pL == -1) break;
+			var pR = tokens.indexOf("*/", pL);
+			if(pR == -1) throw "Expected */, but not found.";
+			tokens.splice(pL, pR - pL + 1);
+		}
 		tokens.removeAllObject("\n");
 		return tokens;
 	}
@@ -179,7 +189,7 @@ function getTypeNum(token)
 		case "UINT2":		return 0x0B;
 		case "SINT1":		return 0x0C;
 		case "UINT1":		return 0x0D;
-		case "CODE": 		return 0x7F;
+		case "CODE": 		return 0x3F;
 	}
 	throw "Unexpected label type: " + token;
 }
@@ -223,7 +233,7 @@ fs.readFile(process.argv[2], 'utf8', function (err, text) {
 		process.exit(1);
 	}
 	var compiler = new Assembler([
-		" ", "\t", "\n" 
+		" ", "\t", "\n", "/*", "*/"
 	], OSECPU_FPGA_INSTR_MAP);
 	compiler.compile(text);
 });
