@@ -279,7 +279,7 @@ function getLabelNum(token)
 function getRegNum(token, type)
 {
 	if(token[0] != type) throw "Expected register type is " + type + ", but " + token[0];
-	return parseInt(token.substr(1));
+	return parseInt(token.substr(1), 16);
 }
 function getTypeNum(token)
 {
