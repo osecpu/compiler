@@ -1,4 +1,8 @@
 
+namespace OSECPU{
+	export const ROM_SIZE = 4096;
+}
+
 var operand = function(type, byteIndex, bitOfs, binList, token){
 	var v;
 	switch(type){
@@ -191,6 +195,7 @@ class Assembler
 {
 	private tokenSeparatorList = [];
 	private opTable: any;
+	static const 
 	constructor(tokenSeparatorList: string[], opTable: any){
 		this.tokenSeparatorList = tokenSeparatorList;
 		this.opTable = opTable;
@@ -257,8 +262,11 @@ class Assembler
 			for(var i = 0; i < codeBlockList.length; i ++){
 				s += codeBlockList[i].getHexStr();
 			}
+			for(var i = ofs; i < OSECPU.ROM_SIZE; i++){
+				s += "00000000\n";
+			}
 			//
-			console.log(s);
+			process.stdout.write(s);
 		} catch(e){
 			console.error(e);
 			process.exit(1);
