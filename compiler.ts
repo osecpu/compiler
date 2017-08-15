@@ -1,6 +1,6 @@
 
 namespace OSECPU{
-	export const ROM_SIZE = 4096;
+	export const ROM_SIZE = 64;
 }
 
 var operand = function(type, byteIndex, bitOfs, binList, token){

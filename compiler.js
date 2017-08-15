@@ -1,6 +1,6 @@
 var OSECPU;
 (function (OSECPU) {
-    OSECPU.ROM_SIZE = 4096;
+    OSECPU.ROM_SIZE = 64;
 })(OSECPU || (OSECPU = {}));
 var operand = function (type, byteIndex, bitOfs, binList, token) {
     var v;
